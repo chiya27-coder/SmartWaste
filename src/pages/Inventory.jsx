@@ -1,202 +1,211 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { getExpiryStatus } from "../utils/risk.js";
 
-function Badge({ tone, children }) {
-  const styles = {
-    display: "inline-block",
-    padding: "0.2rem 0.5rem",
-    borderRadius: "999px",
-    fontSize: "0.85rem",
-    border: "1px solid #ddd",
-  };
-
-  const toneStyles =
+function StatusPill({ tone, label }) {
+  const cls =
     tone === "danger"
-      ? { background: "#ffe5e5", borderColor: "#ffb3b3" }
+      ? "bg-red-500/15 text-red-200 ring-1 ring-red-500/30"
       : tone === "warning"
-      ? { background: "#fff2cc", borderColor: "#ffe08a" }
-      : { background: "#e8f5e9", borderColor: "#b7e0bd" };
+      ? "bg-amber-500/15 text-amber-200 ring-1 ring-amber-500/30"
+      : "bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30";
 
-  return <span style={{ ...styles, ...toneStyles }}>{children}</span>;
+  return (
+    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${cls}`}>
+      {label}
+    </span>
+  );
 }
 
-function isValidISODate(iso) {
-  // must be YYYY-MM-DD
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
-
-  const [y, m, d] = iso.split("-").map(Number);
-  const dt = new Date(iso);
-
-  // Check date is real and matches components (avoids 2026-02-31 becoming March)
+function Field({ label, children }) {
   return (
-    dt instanceof Date &&
-    !Number.isNaN(dt.valueOf()) &&
-    dt.getUTCFullYear() === y &&
-    dt.getUTCMonth() + 1 === m &&
-    dt.getUTCDate() === d
+    <label className="block">
+      <span className="text-sm font-medium text-slate-200">{label}</span>
+      <div className="mt-2">{children}</div>
+    </label>
   );
 }
 
 export default function Inventory({ inventory, actions }) {
   const [name, setName] = useState("");
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState("1");
   const [unit, setUnit] = useState("pcs");
-  const [expiry, setExpiry] = useState(""); // YYYY-MM-DD text
+  const [expiry, setExpiry] = useState("");
+
+  const sorted = useMemo(() => {
+    // Sort by urgency: overdue first, then expiring soon, then ok; then by expiry date
+    const rank = (tone) => (tone === "danger" ? 0 : tone === "warning" ? 1 : 2);
+
+    return [...inventory].sort((a, b) => {
+      const sa = getExpiryStatus(a.expiry);
+      const sb = getExpiryStatus(b.expiry);
+      const r = rank(sa.tone) - rank(sb.tone);
+      if (r !== 0) return r;
+      return String(a.expiry).localeCompare(String(b.expiry));
+    });
+  }, [inventory]);
 
   function onSubmit(e) {
     e.preventDefault();
 
     if (!name.trim()) return alert("Please enter an item name.");
+    if (!expiry) return alert("Please select an expiry date.");
 
-    if (!expiry.trim()) return alert("Please enter an expiry date (YYYY-MM-DD).");
-    if (!isValidISODate(expiry.trim()))
-      return alert("Expiry must be a real date in YYYY-MM-DD format (e.g. 2026-01-22).");
-
-    if (Number.isNaN(Number(quantity)) || Number(quantity) <= 0)
-      return alert("Quantity must be a positive number.");
+    const q = Number(quantity);
+    if (Number.isNaN(q) || q <= 0) return alert("Quantity must be a positive number.");
 
     actions.addItem({
       name: name.trim(),
-      quantity: Number(quantity),
+      quantity: q,
       unit: unit.trim() || "pcs",
-      expiry: expiry.trim(),
+      expiry,
     });
 
     setName("");
-    setQuantity(1);
+    setQuantity("1");
     setUnit("pcs");
     setExpiry("");
   }
 
-  const inputStyle = {
-    width: "100%",
-    boxSizing: "border-box",
-  };
-
   return (
-    <div>
-      <h2>Inventory</h2>
-      <p>Add items and view expiry-risk status. Updates reflect on Dashboard.</p>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">Inventory</h2>
+        <p className="mt-1 text-slate-300">
+          Add items, track expiry risk, and keep the dashboard up to date.
+        </p>
+      </div>
 
-      <form
-        onSubmit={onSubmit}
-        style={{
-          marginTop: "1rem",
-          marginBottom: "1.25rem",
-          padding: "1rem",
-          border: "1px solid #ddd",
-          borderRadius: "12px",
-          display: "grid",
-          gap: "0.75rem",
-          maxWidth: "700px",
-          overflow: "hidden",
-          background: "#fff",
-        }}
-      >
-        <div style={{ display: "grid", gap: "0.25rem", minWidth: 0 }}>
-          <label>Item name</label>
-          <input
-            style={inputStyle}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+      {/* Add Item Card */}
+      <section className="rounded-2xl bg-slate-900/60 p-5 ring-1 ring-white/10">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold">Add item</h3>
+            <p className="mt-1 text-sm text-slate-300">Enter stock details and an expiry date.</p>
+          </div>
         </div>
 
-        {/* Responsive grid avoids iOS overflow */}
-        <div
-          style={{
-            display: "grid",
-            gap: "0.75rem",
-            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-            alignItems: "end",
-            minWidth: 0,
-          }}
-          className="inv-grid"
-        >
-          <div style={{ display: "grid", gap: "0.25rem", minWidth: 0 }}>
-            <label>Quantity</label>
+        <form onSubmit={onSubmit} className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Field label="Item name">
+              <input
+                className="w-full rounded-xl bg-slate-950/60 px-4 py-3 text-slate-100 ring-1 ring-white/10 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-white/25"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Milk, Tomatoes, Chicken breast"
+              />
+            </Field>
+          </div>
+
+          <Field label="Quantity">
             <input
-              style={inputStyle}
               type="number"
               min="1"
+              className="w-full rounded-xl bg-slate-950/60 px-4 py-3 text-slate-100 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-white/25"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
             />
-          </div>
+          </Field>
 
-          <div style={{ display: "grid", gap: "0.25rem", minWidth: 0 }}>
-            <label>Unit</label>
+          <Field label="Unit">
             <input
-              style={inputStyle}
+              className="w-full rounded-xl bg-slate-950/60 px-4 py-3 text-slate-100 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-white/25"
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
+              placeholder="pcs, L, kg"
             />
+          </Field>
+
+          <div className="sm:col-span-2">
+            <Field label="Expiry date">
+              <input
+                type="date"
+                className="w-full rounded-xl bg-slate-950/60 px-4 py-3 text-slate-100 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-white/25"
+                value={expiry}
+                onChange={(e) => setExpiry(e.target.value)}
+              />
+            </Field>
           </div>
 
-          <div style={{ display: "grid", gap: "0.25rem", minWidth: 0 }}>
-            <label>Expiry (YYYY-MM-DD)</label>
-            <input
-              style={inputStyle}
-              type="text"
-              inputMode="numeric"
-              placeholder="2026-01-22"
-              value={expiry}
-              onChange={(e) => setExpiry(e.target.value)}
-            />
+          <div className="sm:col-span-2 flex items-center gap-3">
+            <button
+              type="submit"
+              className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-200"
+            >
+              Add item
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setName("");
+                setQuantity("1");
+                setUnit("pcs");
+                setExpiry("");
+              }}
+              className="rounded-xl bg-slate-800 px-5 py-3 text-sm font-semibold text-slate-100 hover:bg-slate-700"
+            >
+              Clear
+            </button>
           </div>
+        </form>
+      </section>
+
+      {/* Items list */}
+      <section className="rounded-2xl bg-slate-900/60 ring-1 ring-white/10">
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+          <h3 className="text-lg font-semibold">Items</h3>
+          <div className="text-sm text-slate-300">{sorted.length} total</div>
         </div>
 
-        <style>{`
-          @media (max-width: 600px) {
-            .inv-grid {
-              grid-template-columns: 1fr !important;
-            }
-          }
-        `}</style>
-
-        <div>
-          <button type="submit">Add item</button>
-        </div>
-      </form>
-
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "0.5rem" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-            <th style={{ padding: "0.75rem 0.5rem" }}>Item</th>
-            <th style={{ padding: "0.75rem 0.5rem" }}>Quantity</th>
-            <th style={{ padding: "0.75rem 0.5rem" }}>Expiry</th>
-            <th style={{ padding: "0.75rem 0.5rem" }}>Status</th>
-            <th style={{ padding: "0.75rem 0.5rem" }}></th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {inventory.map((item) => {
+        {/* Mobile-first cards */}
+        <div className="divide-y divide-white/10">
+          {sorted.map((item) => {
             const status = getExpiryStatus(item.expiry);
+            const pillText =
+              status.tone === "ok" ? "OK" : `${status.label} (${status.days}d)`;
 
             return (
-              <tr key={item.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                <td style={{ padding: "0.75rem 0.5rem" }}>
-                  <strong>{item.name}</strong>
-                </td>
-                <td style={{ padding: "0.75rem 0.5rem" }}>
-                  {item.quantity} {item.unit}
-                </td>
-                <td style={{ padding: "0.75rem 0.5rem" }}>{item.expiry}</td>
-                <td style={{ padding: "0.75rem 0.5rem" }}>
-                  <Badge tone={status.tone}>
-                    {status.label}
-                    {status.tone !== "ok" ? ` (${status.days}d)` : ""}
-                  </Badge>
-                </td>
-                <td style={{ padding: "0.75rem 0.5rem" }}>
-                  <button onClick={() => actions.removeItem(item.id)}>Remove</button>
-                </td>
-              </tr>
+              <div key={item.id} className="px-5 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="truncate text-base font-semibold">{item.name}</h4>
+                      <StatusPill tone={status.tone} label={pillText} />
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-2 gap-3 text-sm text-slate-300 sm:grid-cols-3">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-slate-400">Quantity</div>
+                        <div className="mt-1 text-slate-100">
+                          {item.quantity} {item.unit}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-slate-400">Expiry</div>
+                        <div className="mt-1 text-slate-100">{item.expiry}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => actions.removeItem(item.id)}
+                    className="shrink-0 rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-700"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
             );
           })}
-        </tbody>
-      </table>
+
+          {sorted.length === 0 ? (
+            <div className="px-5 py-10 text-center text-slate-300">
+              No items yet. Add your first item above.
+            </div>
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 }
