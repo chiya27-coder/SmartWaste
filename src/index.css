@@ -1,3 +1,25 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+/* --- SmartWaste UI: subtle bordered sections --- */
+.section {
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.85);
+    overflow: hidden;
+  }
+  
+  .section-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  .section-body {
+    padding: 16px;
+  }
+  
+  .card {
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    background: white;
+  }
